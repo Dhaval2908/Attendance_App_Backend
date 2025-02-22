@@ -5,7 +5,7 @@ const Token = require('../models/token'); // Add Token model
 const authMiddleware = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+    console.log("aa gaya bhidu me iddhar")
     // Validate authorization header format
     if (!authHeader?.startsWith('Bearer ')) {
       return res.status(401).json({ message: 'Unauthorized - Invalid authorization header format' });
