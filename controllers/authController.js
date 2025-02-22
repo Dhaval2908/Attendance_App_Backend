@@ -2,6 +2,45 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 
+
+// Add to existing imports
+exports.logout = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    
+    // Verify and decode the token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Add token to blacklist
+    await Token.create({
+      token,
+      expiresAt: new Date(decoded.exp * 1000) // Convert JWT exp to Date
+    });
+
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token already expired' });
+    }
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
+
 // Signup API
 exports.signup = async (req, res) => {
   try {
