@@ -114,8 +114,8 @@ const uploadImage = async (req, res) => {
 const checkFace = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-
-    if (user && user.faceEmbedding) {
+    console.log(user.faceEmbedding)
+    if (user && user.faceEmbedding.length > 0) {
       return res.json({ registered: true });
     } else {
       return res.json({ registered: false });
