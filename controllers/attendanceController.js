@@ -6,11 +6,36 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+const haversineDistance = (coords1, coords2) => {
+  const toRad = (x) => (x * Math.PI) / 180;
+
+  const [lon1, lat1] = coords1;
+  const [lon2, lat2] = coords2;
+
+  const R = 6371000; // Earth radius in meters
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+          Math.cos(toRad(lat2)) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  const distance = R * c; // Distance in meters
+  return distance;
+};
+
+
 exports.markAttendance = async (req, res) => {
     try {
       // console.log(req.body)
         const userId = req.user._id;
-        const { eventId } = req.body;
+        const { eventId, latitude, longitude } = req.body;
         // console.log(req.body)
 
         const user = await User.findById(userId);
@@ -22,10 +47,31 @@ exports.markAttendance = async (req, res) => {
             return res.status(404).json({ error: 'User or Event not found' });
         }
 
-          // ✅ Check if user is registered for the event
-          if (!event.registeredStudents.includes(userId)) {
-              return res.status(403).json({ error: 'User not registered for this event' });
-          }
+        // ✅ Check if user is registered for the event
+        if (!event.registeredStudents.includes(userId)) {
+            return res.status(403).json({ error: 'User not registered for this event' });
+        }
+
+        // Check if location is provided
+        if (!latitude || !longitude) {
+          return res.status(400).json({ error: 'Location (latitude and longitude) is required.' });
+        }
+
+        const userCoordinates = [parseFloat(longitude), parseFloat(latitude)];
+        const eventCoordinates = event.location.coordinates;
+        console.log("event cordinates",eventCoordinates);
+        const distance = haversineDistance(userCoordinates, eventCoordinates);
+
+        console.log(`Distance from event location: ${distance} meters`);
+
+        const maxAllowedDistance = 20; // 100 meters threshold (adjust as needed)
+
+        if (distance > maxAllowedDistance) {
+            return res.status(403).json({
+                error: 'You are too far from the event location to mark attendance.',
+                distance: `${distance.toFixed(2)} meters`
+            });
+        }
 
         // ✅ Step 1: Upload image to Flask for face embedding extraction
         if (!req.file) {
@@ -84,7 +130,7 @@ exports.markAttendance = async (req, res) => {
                 status: attendanceStatus,
                 lateMinutes: lateMinutes,
                 markedAt: currentTime,
-                location: req.body.location || { type: 'Point', coordinates: [0, 0] }, // Placeholder if no location is provided
+                location: req.body.location, // Placeholder if no location is provided
                 modifiedBy: userId,
             });
 

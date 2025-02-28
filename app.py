@@ -7,6 +7,7 @@ import cv2
 import os
 import json
 from mtcnn import MTCNN
+from scipy.spatial.distance import cosine
 app = Flask(__name__)
 
 # Set up upload folder
@@ -14,44 +15,39 @@ UPLOAD_FOLDER = "uploads"
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# Function to process image and extract embeddings using MTCNN and ArcFace
-def get_face_embedding(image_path):
-    try:
-        # Initialize MTCNN face detector
-        detector = MTCNN()
+# Initialize MTCNN once
+detector = MTCNN()
 
-        # Read the image
-        img = cv2.imread(image_path)
-        if img is None:
-            return "Error: Could not read image file"
+def crop_face_with_mtcnn(image_path):
+    """ Detect and crop the face using MTCNN """
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError("Cannot read image file")
 
-        # Convert BGR (OpenCV) to RGB (DeepFace expects RGB)
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    faces = detector.detect_faces(img_rgb)
 
-        # Detect faces using MTCNN
-        faces = detector.detect_faces(img_rgb)
+    if len(faces) == 0:
+        return None, None  # No face found
 
-        if len(faces) == 0:
-            return None  # No face detected
+    # Use first face detected
+    x, y, w, h = faces[0]['box']
+    cropped_face = img_rgb[y:y + h, x:x + w]
+    return cropped_face, faces[0]
 
-        # For simplicity, we'll just use the first detected face (if multiple faces are detected)
-        x, y, w, h = faces[0]['box']
 
-        # Crop the face from the image
-        cropped_face = img_rgb[y:y+h, x:x+w]
+def get_face_embedding(face_image):
+    """ Extract embedding using ArcFace on cropped face """
+    # Resize to ArcFace input size (112x112)
+    face_resized = cv2.resize(face_image, (112, 112))
 
-        # Extract face embeddings using DeepFace (ArcFace model)
-        embeddings = DeepFace.represent(cropped_face, model_name="ArcFace", enforce_detection=False)
+    # Get embeddings using DeepFace ArcFace (enforce_detection=False since already detected)
+    embeddings = DeepFace.represent(face_resized, model_name="ArcFace", enforce_detection=False)
 
-        # If no face found, return None
-        if not embeddings:
-            return None
+    if not embeddings:
+        return None
 
-        return embeddings[0]["embedding"]
-    
-    except Exception as e:
-        return str(e)
-    
+    return embeddings[0]["embedding"]   
 
 # API Route: Register a face (upload + extract embedding)
 @app.route("/register", methods=["POST"])
@@ -66,13 +62,19 @@ def register_student():
         image_path = os.path.join(UPLOAD_FOLDER, image.filename)
         image.save(image_path)
 
-        # Process image to get face embedding using ArcFace
-        embeddings = get_face_embedding(image_path)
-        if embeddings is None:
-            return jsonify({"error": "No face detected in the image!"}), 400
+        cropped_face, face_data = crop_face_with_mtcnn(image_path)
+        if cropped_face is None:
+            return jsonify({"error": "No face detected!"}), 400
 
-        return jsonify({"message": "Face embedding extracted successfully!", "face_embedding": embeddings}), 201
+        embedding = get_face_embedding(cropped_face)
+        if embedding is None:
+            return jsonify({"error": "Failed to extract face embedding!"}), 500
 
+        return jsonify({
+            "message": "Face registered successfully",
+            "face_embedding": embedding
+        }), 201
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -84,41 +86,37 @@ def process_face():
         stored_embedding = data.get("stored_embedding")
 
         if not image_name or not stored_embedding:
-            return jsonify({"error": "Image name and stored embedding are required!"}), 400
+            return jsonify({"error": "Image name and stored embedding required!"}), 400
 
-        # Convert stored embedding (from Node.js) to a NumPy array
         stored_embedding = np.array(json.loads(stored_embedding))
 
-        # Path to the stored image in Node.js uploads folder
-        image_path = os.path.join("uploads", image_name)
-
+        image_path = os.path.join(UPLOAD_FOLDER, image_name)
         if not os.path.exists(image_path):
-            return jsonify({"error": f"Image '{image_name}' not found!"}), 404
+            return jsonify({"error": f"Image '{image_name}' not found"}), 404
 
-        # Extract face embedding from the image
-        face_embedding = get_face_embedding(image_path)
+        cropped_face, _ = crop_face_with_mtcnn(image_path)
+        if cropped_face is None:
+            return jsonify({"error": "No face detected!"}), 400
 
+        face_embedding = get_face_embedding(cropped_face)
         if face_embedding is None:
-            return jsonify({"error": "No face detected in the image!"}), 400
+            return jsonify({"error": "Failed to extract face embedding!"}), 500
 
         face_embedding = np.array(face_embedding)
+
         print("✅ Face Embedding Extracted:", face_embedding)
-
-
         # Ensure embeddings are valid
         if np.linalg.norm(stored_embedding) == 0 or np.linalg.norm(face_embedding) == 0:
             print("❌ Error: Invalid embeddings! Cannot compute similarity.")
             return
         # Calculate Cosine Similarity
-        cosine_similarity = np.dot(stored_embedding, face_embedding) / (
-            np.linalg.norm(stored_embedding) * np.linalg.norm(face_embedding)
-        )
+        # Cosine similarity check
+        similarity = 1 - cosine(stored_embedding, face_embedding)
+        is_match = similarity > 0.65
         # Define similarity threshold
-        similarity_threshold = 0.65  
-        is_match = cosine_similarity > similarity_threshold
 
         print("\n🔍 Face Comparison Result:")
-        print(f"✅ Similarity Score: {cosine_similarity:.4f}")
+        print(f"✅ Similarity Score: {similarity:.4f}")
         print(f"✅ Match Found: {is_match}")
 
         return jsonify({"message": bool(is_match)}), 200
