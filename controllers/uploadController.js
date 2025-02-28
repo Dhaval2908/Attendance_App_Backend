@@ -125,4 +125,5 @@ const checkFace = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
+
 module.exports = { uploadImage,checkFace };
