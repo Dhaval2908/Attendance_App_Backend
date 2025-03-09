@@ -52,6 +52,12 @@ exports.signup = async (req, res) => {
       return res.status(400).json({ error: 'Email or Student ID already exists' });
     }
 
+    // Validate Email Domain
+    const emailRegex = /^[a-zA-Z0-9._-]+@(uwindsor\.ca)$/i;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Email must belong to the uwindsor.ca domain' });
+    }
+    
     // Hash the password before saving
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
@@ -78,7 +84,7 @@ exports.signup = async (req, res) => {
 
     res.status(201).json({ token, User: { id: user._id, email: user.email, role: user.role } });
   } catch (error) {
-  
+    console.log(error)
     res.status(500).json({ error: 'Internal server error' });
   }
 };
