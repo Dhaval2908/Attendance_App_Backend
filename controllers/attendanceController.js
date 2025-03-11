@@ -150,3 +150,29 @@ exports.markAttendance = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+exports.getAttendanceStats = async (req, res) => {
+    try {
+        const userId = req.user._id; // Extract user ID from token
+
+        const stats = await Attendance.aggregate([
+            { $match: { user: userId } },
+            {
+                $group: {
+                    _id: "$status",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Convert stats to a readable format
+        const attendanceStats = { present: 0, late: 0, absent: 0 };
+        stats.forEach(stat => {
+            attendanceStats[stat._id] = stat.count;
+        });
+
+        res.status(200).json(attendanceStats);
+    } catch (error) {
+        console.error('Error fetching attendance stats:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};

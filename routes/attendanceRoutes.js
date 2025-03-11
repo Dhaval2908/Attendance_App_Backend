@@ -23,6 +23,7 @@ router.post('/mark-attendance', authMiddleware, upload, attendanceController.mar
 
 // Admin routes - protect with authMiddleware (optional: add role check inside controller)
 router.get('/report', authMiddleware, adminController.generateReport);
+router.get('/stats', authMiddleware, attendanceController.getAttendanceStats);
 router.patch('/modify-attendance', authMiddleware, adminController.modifyAttendance);
 
 module.exports = router;
