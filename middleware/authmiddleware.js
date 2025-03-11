@@ -20,7 +20,8 @@ const authMiddleware = async (req, res, next) => {
 
     // Verify JWT token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
+    console.log("humyum hai")
+    console.log(decoded)
     // Get user and exclude sensitive data
     const user = await User.findById(decoded.UserId)
       .select('-password -faceEmbedding')
