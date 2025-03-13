@@ -2,3 +2,5 @@ node_modules/
 .env
 uploads/
 env/
+__pycache__/
+ecosystem.config.js
