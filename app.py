@@ -70,7 +70,7 @@ def extract_face(image_path):
 
         if face is not None and face.dtype != np.uint8:
             face = (face * 255).astype(np.uint8)  # 🔄 Convert float64 to uint8
-
+        print("end face extraction")
         return face
     except Exception as e:
         print(f"❌ Error extracting face: {e}")
@@ -97,11 +97,27 @@ def get_face_embedding(face_image):
         print(f"❌ Error in get_face_embedding: {str(e)}")
         return None
 
+def haversine_distance(coord1, coord2):
+    lat1, lon1 = map(radians, coord1)
+    lat2, lon2 = map(radians, coord2)
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    R = 6371  # Radius of Earth in kilometers
+    return R * c * 1000  # Return distance in meters
+
+def cosine_similarity(embedding1, embedding2):
+    return np.dot(embedding1, embedding2) / (np.linalg.norm(embedding1) * np.linalg.norm(embedding2))
+
 
 def compare_faces(image_path, stored_embedding, threshold=0.28):  # 🔍 Lower threshold for stricter matching
     face = extract_face(image_path)
     if face is None:
-        return {"error": "No face detected in uploaded image!"}
+        return {"error": "No face detected. Please try again!"}
 
     uploaded_embedding = get_face_embedding(face)
     if uploaded_embedding is None:
@@ -110,11 +126,8 @@ def compare_faces(image_path, stored_embedding, threshold=0.28):  # 🔍 Lower t
     stored_embedding = np.array(stored_embedding)  # Ensure stored embedding is NumPy array
     uploaded_embedding = np.array(uploaded_embedding)
 
-    # Normalize embeddings to improve cosine similarity precision
-    stored_embedding = stored_embedding / np.linalg.norm(stored_embedding)
-    uploaded_embedding = uploaded_embedding / np.linalg.norm(uploaded_embedding)
-
     distance = cosine(uploaded_embedding, stored_embedding)
+    print("distance:", distance)
     return {"match": distance < threshold, "distance": distance}
 
 
@@ -175,27 +188,76 @@ def mark_attendance():
         if stored_embedding.size == 0:
             return jsonify({"error": "No face registered for this user."}), 400
 
+        # ✅ Location check
+        latitude = request.form.get("latitude")
+        longitude = request.form.get("longitude")
+        if not latitude or not longitude:
+            return jsonify({"error": "Location (latitude and longitude) is required."}), 400
+
+        user_coordinates = [float(longitude), float(latitude)]
+        event_coordinates = event_data["location"]["coordinates"]
+        distance = haversine_distance(user_coordinates, event_coordinates)
+
+        max_allowed_distance = 20  # 20 meters threshold (adjust as needed)
+        if distance > max_allowed_distance:
+            return jsonify({
+                "error": "You are too far from the event location to mark attendance.",
+                "distance": f"{distance:.2f} meters"
+            }), 403
+        
         image = request.files.get("image")
         if not image:
             return jsonify({"error": "Image file is required for face verification"}), 400
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
-            image_path = temp_file.name
-            image.save(image_path)
-
-        try:
-            result = compare_faces(image_path, stored_embedding)
-        finally:
-            os.remove(image_path)
+        # with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
+        #     image_path = temp_file.name
+        #     image.save(image_path)
+         # ✅ Save uploaded image in 'Uploads' directory
+        upload_folder = os.path.join(os.path.dirname(__file__), "Uploads")
+        os.makedirs(upload_folder, exist_ok=True)  # Ensure 'Uploads' directory exists
+        image_filename = f"{user_id}_{event_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+        image_path = os.path.join(upload_folder, image_filename)
+        image.save(image_path)
+        print("image_path: ",image_path)
+        # try:
+        result = compare_faces(image_path, stored_embedding)
+        # finally:
+        #     os.remove(image_path)
         print(result)
         if not result.get("match"):
             return jsonify({"error": "Face verification failed!"}), 403
+        
+        # ✅ Check event timing and attendance status
+        current_time = datetime.now()
+        event_start_time = event_data["startTime"]
+        event_end_time = event_data["endTime"]
 
+        attendance_status = "present"
+        late_minutes = 0
+
+        if current_time > event_start_time:
+            attendance_status = "late"
+            late_minutes = (current_time - event_start_time).seconds // 60
+
+        if current_time > event_end_time:
+            attendance_status = "absent"
+            late_minutes = 0  # No late minutes if absent
+        
+        # Extract location from request body
+        latitude = request.form.get("latitude")
+        longitude = request.form.get("longitude")
+        location = {"latitude": latitude, "longitude": longitude}
+
+
+        # ✅ Save attendance record
         attendances_collection.insert_one({
             "user": ObjectId(user_id),
             "event": ObjectId(event_id),
-            "status": "present",
-            "markedAt": datetime.now(),
+            "status": attendance_status,
+            "lateMinutes": late_minutes,
+            "markedAt": current_time,
+            "location": location,  # Add location to attendance record
+            "modifiedBy": ObjectId(user_id),  # User who modified the attendance
         })
 
         return jsonify({"message": "Attendance marked successfully!"}), 201
