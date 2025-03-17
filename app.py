@@ -182,17 +182,24 @@ def mark_attendance():
         event_data = events_collection.find_one({"_id": get_object_id(event_id)})
 
         if not user_data or not event_data:
-            return jsonify({"error": "User or Event not found."}), 404
+            return jsonify({
+                "error": "User or Event not found.",
+            }), 404  # Not Found
 
         stored_embedding = np.array(user_data.get("faceEmbedding", []))
         if stored_embedding.size == 0:
-            return jsonify({"error": "No face registered for this user."}), 400
+            return jsonify({
+                "error": "Please register your face first.",
+            }), 400  # Bad Request
+
 
         # ✅ Location check
         latitude = request.form.get("latitude")
         longitude = request.form.get("longitude")
         if not latitude or not longitude:
-            return jsonify({"error": "Location (latitude and longitude) is required."}), 400
+            return jsonify({
+                "error": "Please provide location data.",
+            }), 400  # Bad Request
 
         user_coordinates = [float(longitude), float(latitude)]
         event_coordinates = event_data["location"]["coordinates"]
@@ -201,13 +208,15 @@ def mark_attendance():
         max_allowed_distance = 20  # 20 meters threshold (adjust as needed)
         if distance > max_allowed_distance:
             return jsonify({
-                "error": "You are too far from the event location to mark attendance.",
-                "distance": f"{distance:.2f} meters"
-            }), 403
+                "error": "You are too far from the event location.",
+            }), 403  # Forbidden
         
         image = request.files.get("image")
         if not image:
-            return jsonify({"error": "Image file is required for face verification"}), 400
+            return jsonify({
+                "error": "Please capture an image for face verification."
+            }), 400  # Bad Request
+
 
         # with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
         #     image_path = temp_file.name
@@ -218,14 +227,17 @@ def mark_attendance():
         image_filename = f"{user_id}_{event_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
         image_path = os.path.join(upload_folder, image_filename)
         image.save(image_path)
-        print("image_path: ",image_path)
-        # try:
-        result = compare_faces(image_path, stored_embedding)
-        # finally:
-        #     os.remove(image_path)
+        
+        try:
+            result = compare_faces(image_path, stored_embedding)
+        finally:
+            os.remove(image_path)
+        
         print(result)
         if not result.get("match"):
-            return jsonify({"error": "Face verification failed!"}), 403
+            return jsonify({
+                "error": "Face does not match with registered face."
+            }), 403  # Forbidden
         
         # ✅ Check event timing and attendance status
         current_time = datetime.now()
@@ -260,12 +272,30 @@ def mark_attendance():
             "modifiedBy": ObjectId(user_id),  # User who modified the attendance
         })
 
-        return jsonify({"message": "Attendance marked successfully!"}), 201
+        return jsonify({
+            "message": "Attendance marked successfully!",
+            "status": "success"
+        }), 201  # Created
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({
+            "error": "Token expired.",
+            "message": "Your session has expired. Please log in again."
+        }), 401  # Unauthorized
+    
+    except jwt.InvalidTokenError:
+        return jsonify({
+            "error": "Invalid token.",
+            "message": "Your token is invalid. Please log in again."
+        }), 401  # Unauthorized
 
     except Exception as e:
         print(f" Error marking attendance: {str(e)}")
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": "Internal server error.",
+            "message": "An unexpected error occurred. Please try again later."
+        }), 500  # Internal Server Error
 
 
 if __name__ == "__main__":
