@@ -176,3 +176,30 @@ exports.getAttendanceStats = async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 };
+exports.checkMultipleAttendanceStatus = async (req, res) => {
+    const { eventIds } = req.body;
+    const userId =req.user._id ;  // Extract user ID from token middleware
+  
+    if (!Array.isArray(eventIds) || eventIds.length === 0) {
+      return res.status(400).json({ error: "Event IDs are required!" });
+    }
+  
+    try {
+      const attendanceRecords = await Attendance.find({
+        user: userId,
+        event: { $in: eventIds }
+      });
+  
+      const statusMap = eventIds.reduce((acc, eventId) => {
+        const record = attendanceRecords.find(record => record.event.toString() === eventId);
+        acc[eventId] = record ? record.status : "pending";  // Default to "absent"
+        return acc;
+      }, {});
+  
+      return res.json({ statusMap });
+    } catch (error) {
+      console.error("❌ Error fetching attendance status:", error);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+  };
+  
