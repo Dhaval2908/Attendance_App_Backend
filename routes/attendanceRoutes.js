@@ -25,5 +25,7 @@ router.post('/mark-attendance', authMiddleware, upload, attendanceController.mar
 router.get('/report', authMiddleware, adminController.generateReport);
 router.get('/stats', authMiddleware, attendanceController.getAttendanceStats);
 router.patch('/modify-attendance', authMiddleware, adminController.modifyAttendance);
+router.post('/status/multiple',authMiddleware, attendanceController.checkMultipleAttendanceStatus);  // ✅ Changed to POST for FormData
+
 
 module.exports = router;

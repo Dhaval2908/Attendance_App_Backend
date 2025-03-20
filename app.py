@@ -17,7 +17,8 @@ from datetime import datetime
 import tempfile
 from flask_cors import CORS
 from concurrent.futures import ThreadPoolExecutor
-
+from mtcnn import MTCNN
+import time
 executor = ThreadPoolExecutor(max_workers=8)
 
 
@@ -49,7 +50,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 print("🔄 Loading ArcFace Model...")
 arcface_model = DeepFace.build_model("ArcFace")
 print(" ArcFace Model Loaded Successfully!")
-
+detector = MTCNN(min_face_size=40)
 # Utility Functions
 def get_object_id(value):
     try:
@@ -60,42 +61,47 @@ def get_object_id(value):
 
 def extract_face(image_path):
     try:
-        faces = DeepFace.extract_faces(
-            img_path=image_path,
-            detector_backend="retinaface",  
-            enforce_detection=True         
-        )
-        
-        face = faces[0]["face"] if faces else None
+        img = cv2.imread(image_path)
+        if img is None:
+            print("❌ Failed to read image")
+            return None
 
-        if face is not None and face.dtype != np.uint8:
-            face = (face * 255).astype(np.uint8)  # 🔄 Convert float64 to uint8
-        print("end face extraction")
-        return face
+        faces = detector.detect_faces(img)
+        if not faces:
+            print("❌ No face detected")
+            return None
+
+        x, y, w, h = faces[0]["box"]
+        face = img[y:y+h, x:x+w]
+
+        # Resize directly to model's required size
+        face_resized = cv2.resize(face, (112, 112))
+
+        if face_resized.dtype != np.uint8:
+            face_resized = (face_resized * 255).astype(np.uint8)
+
+        return face_resized
     except Exception as e:
         print(f"❌ Error extracting face: {e}")
         return None
-
 
 def get_face_embedding(face_image):
     if face_image is None:
         return None
 
     try:
-        face_rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)  
-        face_resized = cv2.resize(face_rgb, (112, 112))  
-
-        # ⚡ Improved: Use 'skip' to bypass DeepFace alignment
         embeddings = DeepFace.represent(
-            img_path=face_resized,
+            img_path=face_image,
             model_name="ArcFace",
-            detector_backend="skip",  
+            detector_backend="skip",  # ✅ Skip redundant detection
             enforce_detection=False
         )
+
         return embeddings[0]["embedding"] if embeddings else None
     except Exception as e:
         print(f"❌ Error in get_face_embedding: {str(e)}")
         return None
+
 
 def haversine_distance(coord1, coord2):
     lat1, lon1 = map(radians, coord1)
@@ -138,6 +144,7 @@ def health_check():
 
 @app.route("/register", methods=["POST"])
 def register_student():
+    start_time = time.time()
     try:
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         decoded_user = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
@@ -164,6 +171,9 @@ def register_student():
             return jsonify({"error": "Failed to extract face embedding!"}), 400
 
         users_collection.update_one({"_id": user_id_object}, {"$set": {"faceEmbedding": embedding}})
+        end_time = time.time()  # ✅ End time tracking
+        execution_time = round(end_time - start_time, 2)  # ✅ Calculate time in seconds
+        print(f"🕒 /register API executed in {execution_time} seconds")
         return jsonify({"message": "Face registered successfully!"}), 201
 
     except Exception as e:
@@ -172,6 +182,7 @@ def register_student():
 
 @app.route("/mark_attendance", methods=["POST"])
 def mark_attendance():
+    start_time = time.time()
     try:
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         decoded_user = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
@@ -271,7 +282,9 @@ def mark_attendance():
             "location": location,  # Add location to attendance record
             "modifiedBy": ObjectId(user_id),  # User who modified the attendance
         })
-
+        end_time = time.time()  # ✅ End time tracking
+        execution_time = round(end_time - start_time, 2)  # ✅ Calculate time in seconds
+        print(f"🕒 /register API executed in {execution_time} seconds")
         return jsonify({
             "message": "Attendance marked successfully!",
             "status": "success"
