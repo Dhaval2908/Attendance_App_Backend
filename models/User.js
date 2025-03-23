@@ -18,6 +18,18 @@ const userSchema = new Schema({
     type: String,
     required: true
   },
+  phoneNumber: {
+    type: String,
+    default: ''
+  },
+  country: {
+    type: String,
+    default: ''
+  },
+  profileImage: {
+    type: String, // Store image URL
+    default: ''
+  },
   password: {
     type: String,
     required: true
@@ -37,11 +49,8 @@ const userSchema = new Schema({
   }]
 }, { timestamps: true });
 
-
-
-// Compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-module.exports = mongoose.models.User || mongoose.model('User', userSchema);  
+module.exports = mongoose.models.User || mongoose.model('User', userSchema);

@@ -63,12 +63,12 @@ def extract_face(image_path):
     try:
         img = cv2.imread(image_path)
         if img is None:
-            print("❌ Failed to read image")
+            print(" Failed to read image")
             return None
 
         faces = detector.detect_faces(img)
         if not faces:
-            print("❌ No face detected")
+            print(" No face detected")
             return None
 
         x, y, w, h = faces[0]["box"]
@@ -82,7 +82,7 @@ def extract_face(image_path):
 
         return face_resized
     except Exception as e:
-        print(f"❌ Error extracting face: {e}")
+        print(f" Error extracting face: {e}")
         return None
 
 def get_face_embedding(face_image):
@@ -93,13 +93,13 @@ def get_face_embedding(face_image):
         embeddings = DeepFace.represent(
             img_path=face_image,
             model_name="ArcFace",
-            detector_backend="skip",  # ✅ Skip redundant detection
+            detector_backend="skip",  #  Skip redundant detection
             enforce_detection=False
         )
 
         return embeddings[0]["embedding"] if embeddings else None
     except Exception as e:
-        print(f"❌ Error in get_face_embedding: {str(e)}")
+        print(f" Error in get_face_embedding: {str(e)}")
         return None
 
 
@@ -171,8 +171,8 @@ def register_student():
             return jsonify({"error": "Failed to extract face embedding!"}), 400
 
         users_collection.update_one({"_id": user_id_object}, {"$set": {"faceEmbedding": embedding}})
-        end_time = time.time()  # ✅ End time tracking
-        execution_time = round(end_time - start_time, 2)  # ✅ Calculate time in seconds
+        end_time = time.time()  #  End time tracking
+        execution_time = round(end_time - start_time, 2)  #  Calculate time in seconds
         print(f"🕒 /register API executed in {execution_time} seconds")
         return jsonify({"message": "Face registered successfully!"}), 201
 
@@ -191,6 +191,8 @@ def mark_attendance():
 
         user_data = users_collection.find_one({"_id": get_object_id(user_id)})
         event_data = events_collection.find_one({"_id": get_object_id(event_id)})
+        print(user_data)
+        print(event_data)
 
         if not user_data or not event_data:
             return jsonify({
@@ -204,7 +206,7 @@ def mark_attendance():
             }), 400  # Bad Request
 
 
-        # ✅ Location check
+        #  Location check
         latitude = request.form.get("latitude")
         longitude = request.form.get("longitude")
         if not latitude or not longitude:
@@ -232,7 +234,7 @@ def mark_attendance():
         # with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
         #     image_path = temp_file.name
         #     image.save(image_path)
-         # ✅ Save uploaded image in 'Uploads' directory
+         #  Save uploaded image in 'Uploads' directory
         upload_folder = os.path.join(os.path.dirname(__file__), "Uploads")
         os.makedirs(upload_folder, exist_ok=True)  # Ensure 'Uploads' directory exists
         image_filename = f"{user_id}_{event_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
@@ -250,7 +252,7 @@ def mark_attendance():
                 "error": "Face does not match with registered face."
             }), 403  # Forbidden
         
-        # ✅ Check event timing and attendance status
+        #  Check event timing and attendance status
         current_time = datetime.now()
         event_start_time = event_data["startTime"]
         event_end_time = event_data["endTime"]
@@ -272,7 +274,7 @@ def mark_attendance():
         location = {"latitude": latitude, "longitude": longitude}
 
 
-        # ✅ Save attendance record
+        #  Save attendance record
         attendances_collection.insert_one({
             "user": ObjectId(user_id),
             "event": ObjectId(event_id),
@@ -282,8 +284,8 @@ def mark_attendance():
             "location": location,  # Add location to attendance record
             "modifiedBy": ObjectId(user_id),  # User who modified the attendance
         })
-        end_time = time.time()  # ✅ End time tracking
-        execution_time = round(end_time - start_time, 2)  # ✅ Calculate time in seconds
+        end_time = time.time()  #  End time tracking
+        execution_time = round(end_time - start_time, 2)  #  Calculate time in seconds
         print(f"🕒 /register API executed in {execution_time} seconds")
         return jsonify({
             "message": "Attendance marked successfully!",
