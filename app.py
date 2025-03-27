@@ -19,6 +19,9 @@ from flask_cors import CORS
 from concurrent.futures import ThreadPoolExecutor
 from mtcnn import MTCNN
 import time
+from datetime import datetime
+import pytz
+
 executor = ThreadPoolExecutor(max_workers=8)
 
 
@@ -253,16 +256,34 @@ def mark_attendance():
             }), 403  # Forbidden
         
         #  Check event timing and attendance status
+        # Timezone conversion to America/Toronto
+        toronto_tz = pytz.timezone("America/Toronto")
+        
         current_time = datetime.now()
+        current_time = datetime.now(toronto_tz)
+
         event_start_time = event_data["startTime"]
+        event_start_time = event_data["startTime"].replace(tzinfo=pytz.utc).astimezone(toronto_tz)
+
         event_end_time = event_data["endTime"]
+        event_end_time = event_data["endTime"].replace(tzinfo=pytz.utc).astimezone(toronto_tz)
+        
+        buffer_minutes = event_data["bufferMinutes"]
 
         attendance_status = "present"
-        late_minutes = 0
+        
+        print("event_start_time:",event_start_time)
+        print("current_time:",current_time)
 
+        late_minutes = 0
+        
         if current_time > event_start_time:
-            attendance_status = "late"
             late_minutes = (current_time - event_start_time).seconds // 60
+            if late_minutes < buffer_minutes:
+                attendance_status = "present"
+            else:
+                attendance_status = "late"
+           
 
         if current_time > event_end_time:
             attendance_status = "absent"
@@ -314,4 +335,4 @@ def mark_attendance():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, threaded=True)
+    app.run(host="0.0.0.0", port=5000, threaded=True,debug=True)
