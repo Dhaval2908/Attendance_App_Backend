@@ -24,13 +24,7 @@ import pytz
 
 executor = ThreadPoolExecutor(max_workers=8)
 
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    message: "Server is healthy",
-    timestamp: new Date().toISOString(),
-  });
-});
+
 
 # Load environment variables
 load_dotenv()
@@ -344,3 +338,4 @@ def mark_attendance():
 if __name__ == "__main__":
 
     app.run(host="0.0.0.0", port=5000, threaded=True,debug=True)
+
